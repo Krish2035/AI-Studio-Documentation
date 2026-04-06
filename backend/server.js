@@ -15,32 +15,40 @@ const app = express();
 app.use(cors({
     origin: [
         "http://localhost:5173", 
-        "https://ai-studio-documentation-l2ek.vercel.app" // Your live frontend
+        "https://ai-studio-documentation-l2ek.vercel.app" // Your live frontend URL
     ],
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true
 }));
 
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
-if (mongoose.connection.readyState === 0) {
-    mongoose.connect(process.env.MONGO_URI)
-        .then(() => console.log("✅ MongoDB Connected Successfully!"))
-        .catch(err => console.error("❌ MongoDB Connection Error:", err));
-}
+// Using a standard connection pattern for Vercel Serverless
+const connectDB = async () => {
+    if (mongoose.connection.readyState >= 1) return;
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log("✅ MongoDB Connected");
+    } catch (err) {
+        console.error("❌ MongoDB Error:", err.message);
+    }
+};
 
 // --- INITIALIZE GEMINI ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
 
-// Root Check
+// --- ROUTES ---
+
+// Root Check (Helps verify if the backend is alive)
 app.get('/', (req, res) => {
     res.send("Studio Documentation API is Online!");
 });
 
 // 1. HISTORY ROUTE
 app.get('/history', async (req, res) => {
+    await connectDB();
     try {
         const history = await Doc.find().sort({ createdAt: -1 }).limit(10);
         res.status(200).json(history);
@@ -51,6 +59,7 @@ app.get('/history', async (req, res) => {
 
 // 2. SMART GENERATION ROUTE
 app.post('/generate', async (req, res) => {
+    await connectDB();
     const { prompt, title } = req.body;
     if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
@@ -91,8 +100,10 @@ app.post('/generate', async (req, res) => {
     }
 });
 
+// --- VERCEL EXPORT ---
 module.exports = app;
 
+// Local Development
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
