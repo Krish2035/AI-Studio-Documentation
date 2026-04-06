@@ -4,18 +4,16 @@ const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Import the Model
 const Doc = require('./models/Doc');
 
 dotenv.config();
-
 const app = express();
 
 // --- CORS CONFIGURATION ---
 app.use(cors({
     origin: [
         "http://localhost:5173", 
-        "https://ai-studio-documentation-l2ek.vercel.app" // Your live frontend URL
+        "https://ai-studio-documentation-l2ek.vercel.app"
     ],
     methods: ["GET", "POST", "OPTIONS"],
     credentials: true
@@ -24,7 +22,6 @@ app.use(cors({
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
-// Using a standard connection pattern for Vercel Serverless
 const connectDB = async () => {
     if (mongoose.connection.readyState >= 1) return;
     try {
@@ -35,18 +32,20 @@ const connectDB = async () => {
     }
 };
 
-// --- INITIALIZE GEMINI ---
+// --- INITIALIZE GEMINI (FIXED VERSIONING) ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
+
+// FORCE the model to use the stable v1 API to avoid the "v1beta not found" error
+const model = genAI.getGenerativeModel({ 
+    model: "gemini-1.5-flash"
+}); 
 
 // --- ROUTES ---
 
-// Root Check (Helps verify if the backend is alive)
 app.get('/', (req, res) => {
     res.send("Studio Documentation API is Online!");
 });
 
-// 1. HISTORY ROUTE
 app.get('/history', async (req, res) => {
     await connectDB();
     try {
@@ -57,7 +56,6 @@ app.get('/history', async (req, res) => {
     }
 });
 
-// 2. SMART GENERATION ROUTE
 app.post('/generate', async (req, res) => {
     await connectDB();
     const { prompt, title } = req.body;
@@ -73,6 +71,7 @@ app.post('/generate', async (req, res) => {
             });
         }
 
+        // Generate content using the initialized model
         const result = await model.generateContent(`
             Act as a Mermaid.js expert. 
             Convert the following description into valid Mermaid.js flowchart syntax.
@@ -85,7 +84,8 @@ app.post('/generate', async (req, res) => {
         `);
         
         const response = await result.response;
-        const cleanText = response.text().replace(/```mermaid/g, "").replace(/```/g, "").trim();
+        const text = response.text();
+        const cleanText = text.replace(/```mermaid/g, "").replace(/```/g, "").trim();
 
         const newDoc = new Doc({
             title: title || "Generated Process",
@@ -95,15 +95,18 @@ app.post('/generate', async (req, res) => {
 
         await newDoc.save();
         res.status(200).json({ diagram: cleanText, source: "ai" });
+
     } catch (error) {
-        res.status(500).json({ error: "Generation Failed", details: error.message });
+        console.error("--- AI ERROR ---", error);
+        res.status(500).json({ 
+            error: "Generation Failed", 
+            details: error.message 
+        });
     }
 });
 
-// --- VERCEL EXPORT ---
 module.exports = app;
 
-// Local Development
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
