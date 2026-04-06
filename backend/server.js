@@ -13,7 +13,7 @@ const app = express();
 app.use(cors({
     origin: [
         "http://localhost:5173", 
-        "https://ai-studio-documentation-l2ek.vercel.app"
+        "https://ai-studio-documentation-l2ek.vercel.app" 
     ],
     methods: ["GET", "POST", "OPTIONS"],
     credentials: true
@@ -32,13 +32,8 @@ const connectDB = async () => {
     }
 };
 
-// --- INITIALIZE GEMINI (FIXED VERSIONING) ---
+// --- INITIALIZE GEMINI ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// FORCE the model to use the stable v1 API to avoid the "v1beta not found" error
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash"
-}); 
 
 // --- ROUTES ---
 
@@ -71,7 +66,11 @@ app.post('/generate', async (req, res) => {
             });
         }
 
-        // Generate content using the initialized model
+        // --- USING THE LATEST STABLE MODEL ---
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.0-flash" 
+        });
+
         const result = await model.generateContent(`
             Act as a Mermaid.js expert. 
             Convert the following description into valid Mermaid.js flowchart syntax.
@@ -97,7 +96,7 @@ app.post('/generate', async (req, res) => {
         res.status(200).json({ diagram: cleanText, source: "ai" });
 
     } catch (error) {
-        console.error("--- AI ERROR ---", error);
+        console.error("--- AI ERROR ---", error.message);
         res.status(500).json({ 
             error: "Generation Failed", 
             details: error.message 
