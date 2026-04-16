@@ -2,12 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
 const Doc = require('./models/Doc');
 
 dotenv.config();
 const app = express();
+
+// --- INITIALIZE GROQ ---
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // --- CORS CONFIGURATION ---
 app.use(cors({
@@ -32,13 +35,10 @@ const connectDB = async () => {
     }
 };
 
-// --- INITIALIZE GEMINI ---
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 // --- ROUTES ---
 
 app.get('/', (req, res) => {
-    res.send("Studio Documentation API is Online!");
+    res.send("Studio Documentation API (Powered by Groq) is Online!");
 });
 
 app.get('/history', async (req, res) => {
@@ -57,6 +57,7 @@ app.post('/generate', async (req, res) => {
     if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
     try {
+        // --- CACHE CHECK ---
         const existingDoc = await Doc.findOne({ prompt: prompt.trim() });
         if (existingDoc) {
             return res.json({ 
@@ -66,26 +67,49 @@ app.post('/generate', async (req, res) => {
             });
         }
 
-        // --- USING THE LATEST STABLE MODEL ---
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.0-flash" 
+        // --- GROQ API IMPLEMENTATION ---
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: `You are a specialized Mermaid.js compiler. 
+                    Rules:
+                    1. Output ONLY raw Mermaid code starting with 'graph TD' or 'graph LR'.
+                    2. Never include markdown backticks (\`\`\`).
+                    3. Never include titles, explanations, or labels ending in '>'.
+                    4. IMPORTANT: Nodes with spaces MUST use quotes: A["Step One"] --> B["Step Two"].
+                    5. Strictly use pipes for labels: -->|Successful| node.`
+                },
+                {
+                    role: "user",
+                    content: `Convert this logic to a valid Mermaid flowchart: ${prompt}`
+                }
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.1, 
         });
 
-        const result = await model.generateContent(`
-            Act as a Mermaid.js expert. 
-            Convert the following description into valid Mermaid.js flowchart syntax.
-            Rules:
-            1. Return ONLY the raw mermaid code.
-            2. Do NOT include markdown code blocks.
-            3. Start with 'graph TD' or 'graph LR'.
-            
-            Description: ${prompt}
-        `);
+        let rawText = chatCompletion.choices[0].message.content;
         
-        const response = await result.response;
-        const text = response.text();
-        const cleanText = text.replace(/```mermaid/g, "").replace(/```/g, "").trim();
+        // --- ENHANCED SUPER-CLEAN LOGIC ---
+        // 1. Remove markdown code blocks
+        // 2. Remove the word 'mermaid' if it leads the string
+        // 3. Remove Mermaid comments (%%)
+        // 4. Strip any conversational text before the 'graph' keyword
+        const cleanText = rawText
+            .replace(/```mermaid/gi, "")
+            .replace(/```/g, "")
+            .replace(/^mermaid/gi, "")
+            .replace(/%%.*$/gm, "") 
+            .replace(/^[^g]*/i, "") 
+            .trim();
 
+        // Final Syntax Guard: Rejection if the output is not a graph structure
+        if (!cleanText.toLowerCase().startsWith('graph')) {
+            throw new Error("AI failed to generate a valid graph structure.");
+        }
+
+        // --- SAVE TO DATABASE ---
         const newDoc = new Doc({
             title: title || "Generated Process",
             prompt: prompt.trim(),
@@ -96,7 +120,7 @@ app.post('/generate', async (req, res) => {
         res.status(200).json({ diagram: cleanText, source: "ai" });
 
     } catch (error) {
-        console.error("--- AI ERROR ---", error.message);
+        console.error("--- GROQ ERROR ---", error.message);
         res.status(500).json({ 
             error: "Generation Failed", 
             details: error.message 
