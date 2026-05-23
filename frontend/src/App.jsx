@@ -13,7 +13,7 @@ import CodeEditor from './components/Editor/CodeEditor';
 import DiagramPreview from './components/Viewer/DiagramPreview';
 
 // --- API CONFIGURATION ---
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://ai-studio-documentation.vercel.app' : 'http://localhost:5000');
 
 function App() {
   const [prompt, setPrompt] = useState('');
@@ -97,7 +97,7 @@ function App() {
       fetchHistory(); 
     } catch (e) { 
       console.error("Generation Error:", e);
-      alert("Failed to connect to backend. Ensure server is running on port 5000."); 
+      alert(`Failed to connect to backend API.`); 
     } finally { setLoading(false); }
   };
 
