@@ -10,7 +10,7 @@ dotenv.config();
 const app = express();
 
 // --- INITIALIZE GROQ ---
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 // --- CORS CONFIGURATION ---
 app.use(cors({
@@ -57,6 +57,10 @@ app.post('/generate', async (req, res) => {
     if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
     try {
+        if (!groq) {
+            return res.status(500).json({ error: "Server Configuration Error: GROQ_API_KEY is missing." });
+        }
+
         // --- CACHE CHECK ---
         const existingDoc = await Doc.findOne({ prompt: prompt.trim() });
         if (existingDoc) {
