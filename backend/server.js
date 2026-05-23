@@ -95,17 +95,17 @@ app.post('/generate', async (req, res) => {
         // 1. Remove markdown code blocks
         // 2. Remove the word 'mermaid' if it leads the string
         // 3. Remove Mermaid comments (%%)
-        // 4. Strip any conversational text before the 'graph' keyword
+        // 4. Strip any conversational text before the first valid Mermaid keyword
         const cleanText = rawText
             .replace(/```mermaid/gi, "")
             .replace(/```/g, "")
             .replace(/^mermaid/gi, "")
             .replace(/%%.*$/gm, "") 
-            .replace(/^[^g]*/i, "") 
+            .replace(/^[\s\S]*?(?=graph|flowchart|sequenceDiagram|classDiagram|stateDiagram-v2|stateDiagram|erDiagram|journey|gantt|pie|requirementDiagram|gitGraph)/i, "") 
             .trim();
 
-        // Final Syntax Guard: Rejection if the output is not a graph structure
-        if (!cleanText.toLowerCase().startsWith('graph')) {
+        // Final Syntax Guard: Rejection if the output is not a valid graph structure
+        if (!/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram-v2|stateDiagram|erDiagram|journey|gantt|pie|requirementDiagram|gitGraph)/i.test(cleanText)) {
             throw new Error("AI failed to generate a valid graph structure.");
         }
 
