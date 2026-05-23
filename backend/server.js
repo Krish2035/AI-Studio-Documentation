@@ -16,7 +16,8 @@ const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_
 app.use(cors({
     origin: [
         "http://localhost:5173", 
-        "https://ai-studio-documentation-l2ek.vercel.app" 
+        "https://ai-studio-documentation-l2ek.vercel.app",
+        "https://ai-studio-documentation-frontend.vercel.app"
     ],
     methods: ["GET", "POST", "OPTIONS"],
     credentials: true
